@@ -7,6 +7,7 @@ import { useForm, useWatch } from "react-hook-form";
 import CippFormComponent from "../../../../components/CippComponents/CippFormComponent";
 import { CippFormCondition } from "../../../../components/CippComponents/CippFormCondition";
 import gdaproles from "../../../../data/GDAPRoles.json";
+import countryList from "../../../../data/countryList.json";
 import { CippFormDomainSelector } from "../../../../components/CippComponents/CippFormDomainSelector";
 import { CippFormUserSelector } from "../../../../components/CippComponents/CippFormUserSelector";
 import { CippFormGroupSelector } from "../../../../components/CippComponents/CippFormGroupSelector";
@@ -29,8 +30,44 @@ const Page = () => {
   });
 
   const watcher = useWatch({ control: formControl.control });
+  const useTAP = useWatch({ control: formControl.control, name: "UseTAP" });
+  const startDate = useWatch({ control: formControl.control, name: "startDate" });
+  const endDate = useWatch({ control: formControl.control, name: "endDate" });
+  const tapLifetimeInMinutes = useWatch({
+    control: formControl.control,
+    name: "tapLifetimeInMinutes",
+  });
+
+  const tapPolicy = ApiGetCall({
+    url: selectedTenant
+      ? `/api/ListGraphRequest`
+      : undefined,
+    data: {
+      Endpoint: "policies/authenticationMethodsPolicy/authenticationMethodConfigurations/TemporaryAccessPass",
+      tenantFilter: selectedTenant?.value,
+    },
+    queryKey: selectedTenant ? `TAPPolicy-${selectedTenant.value}` : "TAPPolicy",
+    waiting: !!selectedTenant,
+  });
+  const tapEnabled = tapPolicy.isSuccess && tapPolicy.data?.Results?.[0]?.state === "enabled";
   const useRoles = useWatch({ control: formControl.control, name: "useRoles" });
   const useGroups = useWatch({ control: formControl.control, name: "useGroups" });
+
+  useEffect(() => {
+    if (!useTAP || !startDate || !endDate) {
+      formControl.setValue("tapLifetimeInMinutes", null);
+      return;
+    }
+
+    const requestedMinutes = Math.max(1, Math.round((endDate - startDate) / 60));
+    const tapPolicyConfig = tapPolicy.data?.Results?.[0];
+    const policyMax = tapPolicyConfig?.maximumLifetimeInMinutes ?? 1440;
+    const policyMin = Math.min(tapPolicyConfig?.minimumLifetimeInMinutes ?? 1, policyMax);
+    formControl.setValue(
+      "tapLifetimeInMinutes",
+      Math.min(Math.max(requestedMinutes, policyMin), policyMax)
+    );
+  }, [useTAP, startDate, endDate, tapPolicy.data, formControl]);
 
   // Clear fields when switches are toggled off
   useEffect(() => {
@@ -159,7 +196,10 @@ const Page = () => {
     };
 
     // Set all template-driven fields
+    formControl.setValue("useRoles", template.defaultUseRoles ?? true, { shouldDirty: true });
+    formControl.setValue("useGroups", template.defaultUseGroups ?? false, { shouldDirty: true });
     formControl.setValue("adminRoles", template.defaultRoles || [], { shouldDirty: true });
+    formControl.setValue("groupMemberships", template.defaultGroups || [], { shouldDirty: true });
     formControl.setValue("expireAction", template.defaultExpireAction || null, {
       shouldDirty: true,
     });
@@ -187,6 +227,9 @@ const Page = () => {
     }
     if (template.defaultExistingUser) {
       formControl.setValue("existingUser", template.defaultExistingUser, { shouldDirty: true });
+    }
+    if (template.defaultUsageLocation) {
+      formControl.setValue("usageLocation", template.defaultUsageLocation, { shouldDirty: true });
     }
 
     // Dates
@@ -324,6 +367,19 @@ const Page = () => {
                   label="Domain Name"
                   required={true}
                   validators={{ required: "Domain is required" }}
+                />
+              </Grid>
+              <Grid size={{ md: 6, xs: 12 }}>
+                <CippFormComponent
+                  type="autoComplete"
+                  label="Usage Location"
+                  name="usageLocation"
+                  multiple={false}
+                  options={countryList.map(({ Code, Name }) => ({
+                    label: Name,
+                    value: Code,
+                  }))}
+                  formControl={formControl}
                 />
               </Grid>
               <Grid size={{ md: 12, xs: 12 }}>
@@ -468,11 +524,26 @@ const Page = () => {
             </Grid>
             <Grid size={{ md: 12, xs: 12 }}>
               <CippFormComponent
+                type="hidden"
+                name="tapLifetimeInMinutes"
+                formControl={formControl}
+              />
+              <CippFormComponent
                 type="switch"
                 label="Generate TAP"
                 name="UseTAP"
                 formControl={formControl}
               />
+              {useTAP && tapPolicy.isSuccess && !tapEnabled && (
+                <Box sx={{ color: "error.main", fontSize: "0.875rem", mt: 0.5 }}>
+                  TAP is not enabled in this tenant. TAP generation will fail.
+                </Box>
+              )}
+              {useTAP && tapLifetimeInMinutes && (
+                <Box sx={{ color: "text.secondary", fontSize: "0.875rem", mt: 0.5 }}>
+                  TAP will be valid for {tapLifetimeInMinutes} minutes.
+                </Box>
+              )}
             </Grid>
             <Grid size={{ md: 6, xs: 12 }}>
               <CippFormComponent
