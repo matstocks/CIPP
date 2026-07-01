@@ -181,6 +181,32 @@ export const getCippFormatting = (data, cellName, type, canReceive, flatten = tr
     )
   }
 
+  // Audit-log coverage timestamps: render as an ABSOLUTE date in the browser's local timezone
+  // (long format) rather than relative "x ago". The UTC ISO values carry a Z so they're
+  // unambiguous; parseCippDate also handles epoch. Checked before the relative timeAgoArray below.
+  const absoluteDateArray = [
+    'WindowStart',
+    'WindowEnd',
+    'CreatedUtc',
+    'DownloadedUtc',
+    'ProcessedUtc',
+    'NextAttemptUtc',
+    'LastErrorUtc',
+    'LastPolledUtc',
+  ]
+  if (absoluteDateArray.includes(cellName)) {
+    if (data === null || data === undefined || data === '') {
+      return isText ? '' : ''
+    }
+    const dt = parseCippDate(data)
+    if (isNaN(dt.getTime())) return isText ? '' : ''
+    if (dt.getTime() === 0) return isText ? '' : 'Never'
+    // text mode: Date object so MRT sorts chronologically (toLocaleString for CSV export);
+    // cell mode: long absolute string in the browser's locale + timezone.
+    if (isText) return canReceive === false ? dt.toLocaleString() : dt
+    return dt.toLocaleString()
+  }
+
   const timeAgoArray = [
     'ExecutedTime',
     'ScheduledTime',
