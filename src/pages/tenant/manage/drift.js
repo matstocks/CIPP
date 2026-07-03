@@ -151,9 +151,9 @@ const ManageDriftPage = () => {
     const settingName = getDriftTaskSettingName(standardName)
     if (!settingName || !tenantFilter) return false
 
-    const expectedTaskName =
+    const expectedPrefix =
       `Persistent Drift Remediation: ${settingName} - ${tenantFilter}`.toLowerCase()
-    return persistentTaskNameSet.has(expectedTaskName)
+    return [...persistentTaskNameSet].some((name) => name.startsWith(expectedPrefix))
   }
 
   // Process drift data for chart - filter by current tenant and aggregate
