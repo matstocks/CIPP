@@ -45,6 +45,11 @@ export const nativeMenuItems = [
             permissions: ['Identity.User.*'],
           },
           {
+            title: 'Guest Users',
+            path: '/identity/administration/guest-users',
+            permissions: ['Identity.User.*'],
+          },
+          {
             title: 'Risky Users',
             path: '/identity/administration/risky-users',
             permissions: ['Identity.User.*'],
@@ -124,7 +129,7 @@ export const nativeMenuItems = [
             permissions: ['Identity.User.*'],
           },
           {
-            title: 'AAD Connect Report',
+            title: 'Microsoft Entra Connect Report',
             path: '/identity/reports/azure-ad-connect-report',
             permissions: ['Identity.User.*'],
           },
@@ -145,7 +150,12 @@ export const nativeMenuItems = [
         <BuildingOfficeIcon />
       </SvgIcon>
     ),
-    permissions: ['Tenant.*', 'Identity.AuditLog.*', 'CIPP.Backup.*', 'Scheduler.Billing.*'],
+    permissions: [
+      'Tenant.*',
+      'Identity.AuditLog.*',
+      'CIPP.Backup.*',
+      'Scheduler.Billing.*',
+    ],
     items: [
       {
         title: 'Administration',
@@ -206,33 +216,32 @@ export const nativeMenuItems = [
         permissions: ['Tenant.Relationship.*'],
         scope: 'global',
       },
+      // Flag-gated swap: the Baselines feature flag lists this path in its Pages
+      // (hidden while the flag is off) and the classic Standards/Drift paths in
+      // HidesPages (hidden while it is on) - the two never show together.
+      {
+        title: 'Baselines',
+        path: '/tenant/baselines',
+        permissions: ['Tenant.Baselines.*'],
+        scope: 'global',
+      },
+      {
+        title: 'Domains Analyser',
+        path: '/tenant/standards/domains-analyser',
+        permissions: ['Tenant.DomainAnalyser.*'],
+        scope: 'global',
+      },
       {
         title: 'Standards & Drift',
-        permissions: [
-          'Tenant.Standards.*',
-          'Tenant.BestPracticeAnalyser.*',
-          'Tenant.DomainAnalyser.*',
-        ],
-        items: [
-          {
-            title: 'Standards Management',
-            path: '/tenant/standards/alignment',
-            permissions: ['Tenant.Standards.*'],
-            scope: 'global',
-          },
-          {
-            title: 'Best Practice Analyser',
-            path: '/tenant/standards/bpa-report',
-            permissions: ['Tenant.BestPracticeAnalyser.*'],
-            scope: 'global',
-          },
-          {
-            title: 'Domains Analyser',
-            path: '/tenant/standards/domains-analyser',
-            permissions: ['Tenant.DomainAnalyser.*'],
-            scope: 'global',
-          },
-        ],
+        path: '/tenant/standards/alignment',
+        permissions: ['Tenant.Standards.*'],
+        scope: 'global',
+      },
+      {
+        title: 'Best Practice Analyser',
+        path: '/tenant/standards/bpa-report',
+        permissions: ['Tenant.BestPracticeAnalyser.*'],
+        scope: 'global',
       },
       {
         title: 'Conditional Access',
@@ -263,7 +272,11 @@ export const nativeMenuItems = [
       },
       {
         title: 'Reports',
-        permissions: ['Tenant.Administration.*', 'Scheduler.Billing.*', 'Tenant.Application.*'],
+        permissions: [
+          'Tenant.Administration.*',
+          'Scheduler.Billing.*',
+          'Tenant.Application.*',
+        ],
         items: [
           {
             title: 'Licence Report',
@@ -283,6 +296,11 @@ export const nativeMenuItems = [
           {
             title: 'Graph / Office Reports',
             path: '/tenant/reports/graph-office-reports',
+            permissions: ['Tenant.Reports.*'],
+          },
+          {
+            title: 'Custom Test Report',
+            path: '/tenant/reports/custom-test-report',
             permissions: ['Tenant.Reports.*'],
           },
         ],
@@ -580,11 +598,16 @@ export const nativeMenuItems = [
       },
       {
         title: 'Device Management',
-        permissions: ['Endpoint.MEM.*'],
+        permissions: ['Endpoint.MEM.*', 'Endpoint.Device.*'],
         items: [
           {
             title: 'Devices',
             path: '/endpoint/MEM/devices',
+            permissions: ['Endpoint.Device.*'],
+          },
+          {
+            title: 'BitLocker Key Search',
+            path: '/endpoint/MEM/bitlocker-search',
             permissions: ['Endpoint.Device.*'],
           },
           {
@@ -635,11 +658,20 @@ export const nativeMenuItems = [
             path: '/endpoint/MEM/list-scripts',
             permissions: ['Endpoint.MEM.*'],
           },
+          {
+            title: 'MAA Requests',
+            path: '/endpoint/MEM/approval-requests',
+            permissions: ['Endpoint.MEM.*'],
+          },
         ],
       },
       {
         title: 'Reports',
-        permissions: ['Endpoint.Device.*', 'Endpoint.Autopilot.*', 'Endpoint.MEM.*'],
+        permissions: [
+          'Endpoint.Device.*',
+          'Endpoint.Autopilot.*',
+          'Endpoint.MEM.*',
+        ],
         items: [
           {
             title: 'Analytics Device Score',
@@ -690,6 +722,31 @@ export const nativeMenuItems = [
         title: 'SharePoint',
         path: '/teams-share/sharepoint',
         permissions: ['Sharepoint.Admin.*'],
+      },
+      {
+        title: 'SharePoint Templates',
+        path: '/teams-share/sharepoint-templates',
+        permissions: ['Sharepoint.Admin.*'],
+      },
+      {
+        title: 'Deleted Sites',
+        path: '/teams-share/deleted-sites',
+        permissions: ['Sharepoint.Admin.*'],
+      },
+      {
+        title: 'Sharing Report',
+        path: '/teams-share/sharing-report',
+        permissions: ['Sharepoint.Site.*'],
+      },
+      {
+        title: 'Permissions Report',
+        path: '/teams-share/permissions-report',
+        permissions: ['Sharepoint.Site.*'],
+      },
+      {
+        title: 'External Users',
+        path: '/teams-share/external-users',
+        permissions: ['Sharepoint.Site.*'],
       },
       {
         title: 'Teams',
@@ -801,7 +858,7 @@ export const nativeMenuItems = [
       },
       {
         title: 'Transport',
-        permissions: ['Exchange.TransportRule.*'],
+        permissions: ['Exchange.TransportRule.*', 'Exchange.Connector.*'],
         items: [
           {
             title: 'Transport rules',
@@ -829,7 +886,7 @@ export const nativeMenuItems = [
       },
       {
         title: 'Spamfilter',
-        permissions: ['Exchange.SpamFilter.*'],
+        permissions: ['Exchange.SpamFilter.*', 'Exchange.ConnectionFilter.*'],
         items: [
           {
             title: 'Spamfilter',
@@ -862,7 +919,7 @@ export const nativeMenuItems = [
       },
       {
         title: 'Resource Management',
-        permissions: ['Exchange.Equipment.*'],
+        permissions: ['Exchange.Equipment.*', 'Exchange.Room.*'],
         items: [
           {
             title: 'Equipment',
@@ -1025,6 +1082,11 @@ export const nativeMenuItems = [
             path: '/email/tools/mailbox-restores',
             permissions: ['Exchange.Mailbox.*'],
           },
+          {
+            title: 'Message Encryption',
+            path: '/email/tools/message-encryption',
+            permissions: ['Exchange.Mailbox.*'],
+          },
         ],
       },
       {
@@ -1079,7 +1141,7 @@ export const nativeMenuItems = [
         scope: 'global',
       },
       {
-        title: 'Community Repositories',
+        title: 'Catalog',
         path: '/tools/community-repos',
         roles: ['editor', 'admin', 'superadmin'],
         permissions: ['CIPP.Core.*'],
@@ -1153,6 +1215,25 @@ export const nativeMenuItems = [
             scope: 'global',
           },
           {
+            title: 'Container Management',
+            path: '/cipp/advanced/container-management/status',
+            roles: ['superadmin'],
+            permissions: ['CIPP.SuperAdmin.*'],
+            scope: 'global',
+          },
+          {
+            // Lands on cipp-roles, not cipp-users: cipp-users is gated by the
+            // SuperAdminNG feature flag, and the nav filter drops any item whose
+            // path is in a disabled flag's Pages list — pointing here at cipp-users
+            // would hide the whole Authentication group (including the ungated
+            // SSO and SAM App pages) on non-NG instances.
+            title: 'Authentication',
+            path: '/cipp/advanced/authentication/cipp-roles',
+            roles: ['superadmin'],
+            permissions: ['CIPP.SuperAdmin.*'],
+            scope: 'global',
+          },
+          {
             title: 'Exchange Cmdlets',
             path: '/cipp/advanced/exchange-cmdlets',
             roles: ['superadmin'],
@@ -1176,20 +1257,6 @@ export const nativeMenuItems = [
           {
             title: 'Diagnostics',
             path: '/cipp/advanced/diagnostics',
-            roles: ['superadmin'],
-            permissions: ['CIPP.SuperAdmin.*'],
-            scope: 'global',
-          },
-          {
-            title: 'Container Logs',
-            path: '/cipp/advanced/container-logs',
-            roles: ['superadmin'],
-            permissions: ['CIPP.SuperAdmin.*'],
-            scope: 'global',
-          },
-          {
-            title: 'Worker Health',
-            path: '/cipp/advanced/worker-health',
             roles: ['superadmin'],
             permissions: ['CIPP.SuperAdmin.*'],
             scope: 'global',

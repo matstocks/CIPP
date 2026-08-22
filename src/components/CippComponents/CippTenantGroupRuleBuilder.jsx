@@ -151,7 +151,7 @@ const CippTenantGroupRuleBuilder = ({ formControl, name = "dynamicRules" }) => {
               {/* Custom Variable - Two-field input */}
               {watchedRules?.[ruleIndex]?.property?.type === "customVariable" ? (
                 <Grid container spacing={2}>
-                  <Grid size={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <CippFormComponent
                       type="autoComplete"
                       name={`${name}.${ruleIndex}.value.variableName`}
@@ -178,7 +178,7 @@ const CippTenantGroupRuleBuilder = ({ formControl, name = "dynamicRules" }) => {
                       }}
                     />
                   </Grid>
-                  <Grid size={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <CippFormComponent
                       type="textField"
                       name={`${name}.${ruleIndex}.value.value`}
@@ -190,6 +190,16 @@ const CippTenantGroupRuleBuilder = ({ formControl, name = "dynamicRules" }) => {
                     />
                   </Grid>
                 </Grid>
+              ) : watchedRules?.[ruleIndex]?.property?.type === "gdapAge" ? (
+                <CippFormComponent
+                  type="number"
+                  name={`${name}.${ruleIndex}.value.value`}
+                  label="Days"
+                  formControl={formControl}
+                  required
+                  placeholder="e.g. 14"
+                  fullWidth
+                />
               ) : (
                 <CippFormComponent
                   type="autoComplete"
@@ -235,6 +245,8 @@ const CippTenantGroupRuleBuilder = ({ formControl, name = "dynamicRules" }) => {
         "Member of Tenant Group equals 'Production Tenants'"
         {" | "}
         "Custom Variable: Environment equals Production"
+        {" | "}
+        "GDAP Relationship Age (days) Greater Than or Equal 14"
       </Alert>
 
       {/* Logic Operator Selection */}

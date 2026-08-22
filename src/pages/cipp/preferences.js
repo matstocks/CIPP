@@ -38,6 +38,12 @@ const Page = () => {
     queryKey: "authmecipp",
   });
 
+  // Test suites for the default Home page suite selector (shared cache with the dashboard)
+  const reportsApi = ApiGetCall({
+    url: "/api/ListTestReports",
+    queryKey: "ListTestReports",
+  });
+
   const cleanedSettings = { ...settings };
 
   if (cleanedSettings.offboardingDefaults?.keepCopy) {
@@ -215,7 +221,7 @@ const Page = () => {
     },
     {
       name: "portalLinks.Compliance_Portal",
-      label: "Compliance",
+      label: "Purview",
     },
     {
       name: "portalLinks.Power_Platform_Portal",
@@ -284,6 +290,42 @@ const Page = () => {
                               validators={{
                                 required: { value: true, message: "This field is required" },
                               }}
+                            />
+                          ),
+                        },
+                        {
+                          label: "Table view on small screens",
+                          value: (
+                            <CippFormComponent
+                              type="autoComplete"
+                              creatable={false}
+                              disableClearable={true}
+                              defaultValue={{ value: "auto", label: "Automatic (cards on mobile)" }}
+                              name="tableViewMode"
+                              formControl={formcontrol}
+                              multiple={false}
+                              options={[
+                                { value: "auto", label: "Automatic (cards on mobile)" },
+                                { value: "cards", label: "Always card list" },
+                                { value: "table", label: "Always classic table" },
+                              ]}
+                            />
+                          ),
+                        },
+                        {
+                          label: "Default test suite on the Home page",
+                          value: (
+                            <CippFormComponent
+                              type="autoComplete"
+                              creatable={false}
+                              name="defaultTestSuite"
+                              formControl={formcontrol}
+                              multiple={false}
+                              options={(reportsApi.data || []).map((report) => ({
+                                value: report.id,
+                                label: report.name,
+                              }))}
+                              isFetching={reportsApi.isFetching}
                             />
                           ),
                         },

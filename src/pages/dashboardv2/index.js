@@ -2,6 +2,10 @@ import {
   Box,
   Container,
   Button,
+  Divider,
+  List,
+  ListItemButton,
+  ListSubheader,
   Menu,
   MenuItem,
   ListItemIcon,
@@ -13,9 +17,12 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { Grid, useMediaQuery } from '@mui/system'
 import { useSettings } from '../../hooks/use-settings'
+import { useIsMobileLayout } from '../../hooks/use-breakpoint'
 import { ApiGetCall } from '../../api/ApiCall.jsx'
-import Portals from '../../data/portals'
+import { getFilteredPortals } from '../../utils/get-filtered-portals'
+import { getIconByName } from '../../utils/icon-registry'
 import { BulkActionsMenu } from '../../components/bulk-actions-menu.js'
+import { CippPageActionsFab } from '../../components/CippComponents/CippPageActionsFab'
 import { ExecutiveReportButton } from '../../components/ExecutiveReportButton.js'
 import { TabbedLayout } from '../../layouts/TabbedLayout'
 import { Layout as DashboardLayout } from '../../layouts/index.js'
@@ -33,18 +40,32 @@ import { CippReportToolbar } from '../../components/CippComponents/CippReportToo
 import { Assessment as AssessmentIcon } from '@mui/icons-material'
 import ChevronDownIcon from '@heroicons/react/24/outline/ChevronDownIcon'
 import { CippHead } from '../../components/CippComponents/CippHead.jsx'
+import { AllTenantsDashboard } from '../../components/CippAllTenants/AllTenantsDashboard'
 
 const Page = () => {
   const settings = useSettings()
   const router = useRouter()
   const { currentTenant } = settings
+  // The per-tenant cards below are all scoped to a single tenant's Graph data. Under AllTenants —
+  // which is also the state on first login, before a tenant has been picked — swap in the
+  // cross-tenant view rather than letting the layout render "Not supported".
+  const isAllTenants = !currentTenant || currentTenant === 'AllTenants'
   const [portalMenuItems, setPortalMenuItems] = useState([])
   const isWide = useMediaQuery('(min-width:1513px)')
+  // Below md the Portals/Reports button row gives way to a bottom-right FAB sheet, and
+  // CippReportToolbar collapses to selector + kebab on its own.
+  const isMobile = useIsMobileLayout()
   const [reportsMenuAnchor, setReportsMenuAnchor] = useState(null)
-  // Get reportId from query params or default to "ztna"
+  // Get reportId from query params or default to the user's preferred suite (Preferences page)
   // Only use default if router is ready and reportId is still not present
+  const defaultReportId =
+    settings.UserSpecificSettings?.defaultTestSuite?.value ||
+    settings.defaultTestSuite?.value ||
+    'ztna'
   const selectedReport =
-    router.isReady && !router.query.reportId ? 'ztna' : router.query.reportId || 'ztna'
+    router.isReady && !router.query.reportId
+      ? defaultReportId
+      : router.query.reportId || defaultReportId
 
   // Fetch available reports (shared cache with CippReportToolbar)
   const reportsApi = ApiGetCall({
@@ -58,6 +79,7 @@ const Page = () => {
     url: '/api/ListGraphRequest',
     queryKey: `${currentTenant}-ListGraphRequest-organization`,
     data: { tenantFilter: currentTenant, Endpoint: 'organization' },
+    waiting: !isAllTenants,
   })
 
   const organizationRecord = organization.data?.Results?.[0]
@@ -66,7 +88,7 @@ const Page = () => {
     url: '/api/ListTests',
     data: { tenantFilter: currentTenant, reportId: selectedReport },
     queryKey: `${currentTenant}-ListTests-${selectedReport}`,
-    waiting: !!currentTenant && !!selectedReport,
+    waiting: !isAllTenants && !!currentTenant && !!selectedReport,
   })
 
   const currentTenantInfo = ApiGetCall({
@@ -125,38 +147,6 @@ const Page = () => {
         }
       : dashboardDemoData
 
-  // Function to filter portals based on user preferences
-  const getFilteredPortals = () => {
-    const defaultLinks = {
-      M365_Portal: true,
-      Exchange_Portal: true,
-      Entra_Portal: true,
-      Teams_Portal: true,
-      Azure_Portal: true,
-      Intune_Portal: true,
-      SharePoint_Admin: true,
-      Security_Portal: true,
-      Compliance_Portal: true,
-      Power_Platform_Portal: true,
-      Power_BI_Portal: true,
-    }
-
-    let portalLinks
-    if (settings.UserSpecificSettings?.portalLinks) {
-      portalLinks = { ...defaultLinks, ...settings.UserSpecificSettings.portalLinks }
-    } else if (settings.portalLinks) {
-      portalLinks = { ...defaultLinks, ...settings.portalLinks }
-    } else {
-      portalLinks = defaultLinks
-    }
-
-    // Filter the portals based on user settings
-    return Portals.filter((portal) => {
-      const settingKey = portal.name
-      return settingKey ? portalLinks[settingKey] === true : true
-    })
-  }
-
   useEffect(() => {
     if (currentTenantInfo.isSuccess) {
       const tenantLookup = currentTenantInfo.data?.find(
@@ -164,12 +154,17 @@ const Page = () => {
       )
 
       // Get filtered portals based on user preferences
-      const filteredPortals = getFilteredPortals()
+      const filteredPortals = getFilteredPortals(settings)
 
       const menuItems = filteredPortals.map((portal) => ({
         label: portal.label,
         target: '_blank',
-        link: portal.url.replace(portal.variable, tenantLookup?.[portal.variable]),
+        // A portal with a `field` has a URL the backend resolved for us (SharePoint's host cannot be
+        // derived from the tenant). Use it when it's there, otherwise fall back to the templated URL.
+        link:
+          portal.field && tenantLookup?.[portal.field]
+            ? tenantLookup[portal.field]
+            : portal.url.replace(portal.variable, tenantLookup?.[portal.variable]),
         icon: portal.icon,
       }))
       setPortalMenuItems(menuItems)
@@ -189,11 +184,28 @@ const Page = () => {
     return num.toLocaleString()
   }
 
+  if (isAllTenants) {
+    // No top margin, matching CippTablePage: the layout's breadcrumb Divider already carries mb: 2.
+    return (
+      <Container maxWidth={false} sx={{ mb: 6 }}>
+        <CippHead title="Dashboard" />
+        <AllTenantsDashboard />
+      </Container>
+    )
+  }
+
   return (
-    <Container maxWidth={false} sx={{ mt: 12, mb: 6 }}>
+    // Both branches sit under the same TabbedLayout tab bar; the per-tenant mt: 12 is legacy
+    // desktop spacing kept for now. Mobile adds nothing — the breadcrumb rail no longer
+    // renders on the dashboard, and the sibling views (identity/devices/custom) start their
+    // toolbar straight after the layout's own 16px gap, so this view must too.
+    <Container maxWidth={false} sx={{ mt: { xs: 0, md: 12 }, mb: 6 }}>
       <CippHead title="Dashboard" />
       <Box sx={{ width: '100%', mx: 'auto' }}>
-        <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
+        {/* xs has a single item (the portals cell is desktop-only), so grid spacing would
+            only pad the toolbar down away from the title. */}
+        <Grid container spacing={{ xs: 0, md: 2 }} alignItems="center" sx={{ mb: 2 }}>
+          {!isMobile && (
           <Grid size={{ xs: 12, md: 4 }}>
             <Box
               data-tutorial="dashboard-toolbar"
@@ -316,6 +328,7 @@ const Page = () => {
               )}
             </Box>
           </Grid>
+          )}
           <Grid size={{ xs: 12, md: 8 }} data-tutorial="dashboard-test-suite">
             <CippReportToolbar />
           </Grid>
@@ -357,15 +370,25 @@ const Page = () => {
           <Grid container spacing={2}>
             {/* Left Column */}
             <Grid size={{ xs: 12, lg: 6 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
-                <Box sx={{ height: 450 }} data-tutorial="dashboard-secure-score">
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  height: '100%',
+                }}
+              >
+                {/* The fixed height exists to keep the two lg columns level. Below lg this is
+                    a single column, so it buys nothing and clips instead: the description wraps
+                    to more lines on a narrow card and the stats row falls off the bottom edge. */}
+                <Box sx={{ height: { xs: 'auto', lg: 450 } }} data-tutorial="dashboard-secure-score">
                   <SecureScoreCard
                     data={testsApi.data?.SecureScore}
                     isLoading={testsApi.isFetching}
                     sx={{ height: '100%' }}
                   />
                 </Box>
-                <Box sx={{ height: 450 }} data-tutorial="dashboard-auth-methods">
+                <Box sx={{ height: { xs: 'auto', lg: 450 } }} data-tutorial="dashboard-auth-methods">
                   <AuthMethodCard
                     data={testsApi.data?.MFAState}
                     isLoading={testsApi.isFetching}
@@ -377,15 +400,22 @@ const Page = () => {
 
             {/* Right Column */}
             <Grid size={{ xs: 12, lg: 6 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
-                <Box sx={{ height: 450 }} data-tutorial="dashboard-mfa">
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  height: '100%',
+                }}
+              >
+                <Box sx={{ height: { xs: 'auto', lg: 450 } }} data-tutorial="dashboard-mfa">
                   <MFACard
                     data={testsApi.data?.MFAState}
                     isLoading={testsApi.isFetching}
                     sx={{ height: '100%' }}
                   />
                 </Box>
-                <Box sx={{ height: 450 }} data-tutorial="dashboard-licenses">
+                <Box sx={{ height: { xs: 'auto', lg: 450 } }} data-tutorial="dashboard-licenses">
                   <LicenseCard
                     data={testsApi.data?.LicenseData}
                     isLoading={testsApi.isFetching}
@@ -397,12 +427,74 @@ const Page = () => {
           </Grid>
         </Box>
       </Box>
+
+      {/* Mobile home of the Portals/Reports header row. keepMounted: ExecutiveReportButton's
+          preview Dialog is internal state and must survive the sheet auto-closing under it
+          (same trick as the desktop Reports Menu above). */}
+      {isMobile && (
+        <CippPageActionsFab
+          title="Dashboard actions"
+          restackButtons={false}
+          sheetProps={{ ModalProps: { keepMounted: true } }}
+        >
+          {portalMenuItems.length > 0 && (
+            <>
+              <List
+                sx={{ py: 0 }}
+                subheader={
+                  <ListSubheader disableSticky sx={{ bgcolor: 'transparent' }}>
+                    Portals
+                  </ListSubheader>
+                }
+              >
+                {portalMenuItems.map((item, index) => (
+                  <ListItemButton
+                    key={`portal-${index}`}
+                    component="a"
+                    href={item.link}
+                    target="_blank"
+                    rel="noreferrer"
+                    sx={{ minHeight: 48 }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 40 }}>{getIconByName(item.icon)}</ListItemIcon>
+                    <ListItemText primary={item.label} />
+                  </ListItemButton>
+                ))}
+              </List>
+              <Divider sx={{ my: 0.5 }} />
+            </>
+          )}
+          <List
+            sx={{ py: 0 }}
+            subheader={
+              <ListSubheader disableSticky sx={{ bgcolor: 'transparent' }}>
+                Reports
+              </ListSubheader>
+            }
+          >
+            <ExecutiveReportButton variant="menuItem" disabled={organization.isFetching} />
+            <ListItemButton
+              component={Link}
+              href="/tools/report-builder/generated"
+              sx={{ minHeight: 48 }}
+            >
+              <ListItemIcon sx={{ minWidth: 40 }}>
+                <AssessmentIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText primary="Report Builder" />
+            </ListItemButton>
+          </List>
+        </CippPageActionsFab>
+      )}
     </Container>
   )
 }
 
+// No allTenantsSupport={false} here: the page handles AllTenants itself (see isAllTenants above),
+// and the Identity / Devices / Custom tabs each render a cross-tenant view in that mode too.
+// Leaving the opt-out in place would make the layout render "Not supported" and never mount this page.
 Page.getLayout = (page) => (
-  <DashboardLayout allTenantsSupport={false}>
+  <DashboardLayout>
     <TabbedLayout tabOptions={tabOptions}>{page}</TabbedLayout>
   </DashboardLayout>
 )

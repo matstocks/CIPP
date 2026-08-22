@@ -32,7 +32,6 @@ const CippGraphExplorerFilter = ({
   selectedPreset = null,
   onPresetSelect,
   hideButtons = false,
-  initialValues = null,
 }) => {
   const [offCanvasOpen, setOffCanvasOpen] = useState(false)
   const [cardExpanded, setCardExpanded] = useState(true)
@@ -68,15 +67,11 @@ const CippGraphExplorerFilter = ({
     },
   })
 
-  useEffect(() => {
-    if (initialValues && !selectedPreset) {
-      formControl.reset({ ...formControl.getValues(), ...initialValues }, { keepDefaultValues: true })
-    }
-  }, [])
-
   const defaultGraphExplorerTitle = 'Graph Explorer'
 
-  var gridItemSize = 6
+  // Accordion (the Graph Explorer page) lays fields out two-up; the card variant used in
+  // the table filter drawer is single-column. Either way a phone gets one column.
+  var gridItemSize = { xs: 12, md: 6 }
   if (component !== 'accordion') {
     gridItemSize = 12
   }
@@ -111,13 +106,16 @@ const CippGraphExplorerFilter = ({
     waiting: false,
   })
 
-  var presetFilter = {}
-  if (endpointFilter) {
-    if (formControl.getValues('endpoint') !== endpointFilter) {
+  // Seeding the form from the endpointFilter prop is a side effect: doing it during render
+  // updates the subscribed Controller mid-render ("Cannot update a component while rendering
+  // a different component"). It fires twice on mobile, where the table remounts as cards.
+  useEffect(() => {
+    if (endpointFilter && formControl.getValues('endpoint') !== endpointFilter) {
       formControl.setValue('endpoint', endpointFilter)
     }
-    presetFilter = { Endpoint: endpointFilter }
-  }
+  }, [endpointFilter, formControl])
+
+  const presetFilter = endpointFilter ? { Endpoint: endpointFilter } : {}
 
   // API call for available presets
   const presetList = ApiGetCall({
@@ -226,60 +224,48 @@ const CippGraphExplorerFilter = ({
     if (option.value !== selectedPresets?.value) {
       presetControl.setValue('reportTemplate', option)
     }
-  }, [selectedPreset?.id, selectedPreset?.filterName, presetOptions])
+    // selectedPreset?.value covers the autocomplete option shape (no id/filterName keys)
+  }, [selectedPreset?.id, selectedPreset?.filterName, selectedPreset?.value, presetOptions])
 
   useEffect(() => {
     if (selectedPresets?.addedFields?.params) {
       setPresetOwner(selectedPresets?.addedFields?.IsMyPreset ?? false)
-      Object.keys(selectedPresets.addedFields.params).forEach(
-        (key) =>
-          selectedPresets.addedFields.params[key] == null &&
-          delete selectedPresets.addedFields.params[key]
-      )
-      //if $select is a blank array, set it to a string.
-      if (
-        selectedPresets.addedFields.params.$select &&
-        selectedPresets.addedFields.params.$select.length === 0
-      ) {
-        selectedPresets.addedFields.params.$select = ''
-      }
 
-      // if $select is an array, extract the values and comma separate
-      if (
-        Array.isArray(selectedPresets.addedFields.params.$select) &&
-        selectedPresets.addedFields.params.$select.length > 0
-      ) {
-        selectedPresets.addedFields.params.$select = selectedPresets.addedFields.params.$select
-          .map((item) => item.value)
-          .join(',')
+      // normalize on a copy, addedFields.params is shared state (defaultPresets module / react-query cache)
+      const params = { ...selectedPresets.addedFields.params }
+      Object.keys(params).forEach((key) => {
+        if (params[key] == null) {
+          delete params[key]
+        }
+      })
+
+      // $select arrives as comma string (built-in presets) or array (saved presets), form needs [{label,value}]
+      if (Array.isArray(params.$select)) {
+        params.$select = params.$select.map((item) =>
+          typeof item === 'string' ? { label: item, value: item } : item
+        )
+      } else if (typeof params.$select === 'string' && params.$select !== '') {
+        params.$select = params.$select.split(',').map((item) => ({ label: item, value: item }))
+      } else {
+        params.$select = []
       }
-      selectedPresets.addedFields.params.$select !== ''
-        ? (selectedPresets.addedFields.params.$select = selectedPresets.addedFields.params?.$select
-            ?.split(',')
-            .map((item) => ({ label: item, value: item })))
-        : (selectedPresets.addedFields.params.$select = [])
 
       // Convert version string to autocomplete object format, default to beta if not present
-      if (selectedPresets.addedFields.params.version) {
+      if (params.version) {
         const versionValue =
-          typeof selectedPresets.addedFields.params.version === 'string'
-            ? selectedPresets.addedFields.params.version
-            : selectedPresets.addedFields.params.version.value
-        selectedPresets.addedFields.params.version = {
-          label: versionValue,
-          value: versionValue,
-        }
+          typeof params.version === 'string' ? params.version : params.version.value
+        params.version = { label: versionValue, value: versionValue }
       } else {
-        selectedPresets.addedFields.params.version = { label: 'beta', value: 'beta' }
+        params.version = { label: 'beta', value: 'beta' }
       }
 
-      selectedPresets.addedFields.params.id = selectedPresets.value
+      params.id = selectedPresets.value
       setSelectedPreset(selectedPresets.value)
-      selectedPresets.addedFields.params.name = selectedPresets.label
+      params.name = selectedPresets.label
 
       // save last preset title
       setLastPresetTitle(selectedPresets.label)
-      formControl.reset(selectedPresets?.addedFields?.params, { keepDefaultValues: true })
+      formControl.reset(params, { keepDefaultValues: true })
 
       // Notify parent when preset changes in this component
       if (onPresetSelect) {
@@ -507,8 +493,9 @@ const CippGraphExplorerFilter = ({
   }
   // Handle filter form submission
   const onSubmit = (values) => {
-    if (values.$select && Array.isArray(values.$select) && values.$select.length > 0) {
-      values.$select = values?.$select?.map((item) => item.value)?.join(',')
+    if (Array.isArray(values.$select)) {
+      // empty array joins to '', removed by the null/empty cleanup below
+      values.$select = values.$select.map((item) => item.value).join(',')
     }
     if (values.version && values.version.value) {
       values.version = values.version.value
@@ -533,7 +520,11 @@ const CippGraphExplorerFilter = ({
     delete values.id
     delete values.IsShared
     delete values.reportTemplate
-    delete values.ReverseTenantLookupProperty
+    delete values.manualPagination
+    if (!values.ReverseTenantLookup) {
+      // property only means something with the lookup enabled
+      delete values.ReverseTenantLookupProperty
+    }
 
     Object.keys(values).forEach((key) => {
       if (values[key] === null || values[key] === '') {
@@ -737,7 +728,7 @@ const CippGraphExplorerFilter = ({
         </Grid>
         <Grid container spacing={1} sx={{ mt: 2 }}>
           {/* Reverse Tenant Lookup Switch */}
-          <Grid size={{ xs: 6, sm: gridSwitchSize }}>
+          <Grid size={{ xs: 12, sm: gridSwitchSize }}>
             <CippFormComponent
               type="switch"
               name="ReverseTenantLookup"
@@ -751,7 +742,7 @@ const CippGraphExplorerFilter = ({
             compareValue={true}
           >
             {/* Reverse Tenant Lookup Property Field */}
-            <Grid size={6}>
+            <Grid size={{ xs: 12, sm: 6 }}>
               <CippFormComponent
                 type="textField"
                 name="ReverseTenantLookupProperty"
@@ -762,7 +753,7 @@ const CippGraphExplorerFilter = ({
             </Grid>
           </CippFormCondition>
           {/* No Pagination Switch */}
-          <Grid size={{ xs: 6, sm: gridSwitchSize }}>
+          <Grid size={{ xs: 12, sm: gridSwitchSize }}>
             <CippFormComponent
               type="switch"
               name="NoPagination"
@@ -771,7 +762,7 @@ const CippGraphExplorerFilter = ({
             />
           </Grid>
           {/* $count Switch */}
-          <Grid size={{ xs: 6, sm: gridSwitchSize }}>
+          <Grid size={{ xs: 12, sm: gridSwitchSize }}>
             <CippFormComponent
               type="switch"
               name="$count"
@@ -781,7 +772,7 @@ const CippGraphExplorerFilter = ({
           </Grid>
 
           {/* AsApp switch */}
-          <Grid size={{ xs: 6, sm: gridSwitchSize }}>
+          <Grid size={{ xs: 12, sm: gridSwitchSize }}>
             <CippFormComponent
               name="AsApp"
               type="switch"
@@ -804,7 +795,11 @@ const CippGraphExplorerFilter = ({
             <Stack spacing={2}>
               <CippApiResults apiObject={savePresetApi} />
               {component === 'accordion' ? (
-                <Stack spacing={1.5} direction="row" sx={{ display: 'flex', alignItems: 'center' }}>
+                <Stack
+                  spacing={1.5}
+                  direction={{ xs: 'column', md: 'row' }}
+                  sx={{ display: 'flex', alignItems: { xs: 'stretch', md: 'center' } }}
+                >
                   <Button
                     variant="contained"
                     color="primary"
@@ -863,7 +858,7 @@ const CippGraphExplorerFilter = ({
                 </Stack>
               ) : (
                 <Grid container spacing={1.5}>
-                  <Grid size={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <Button
                       variant="contained"
                       color="primary"
@@ -874,7 +869,7 @@ const CippGraphExplorerFilter = ({
                       Apply Filter
                     </Button>
                   </Grid>
-                  <Grid size={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <Button
                       startIcon={<CalendarMonthTwoTone />}
                       variant="outlined"
@@ -884,7 +879,7 @@ const CippGraphExplorerFilter = ({
                       Schedule Report
                     </Button>
                   </Grid>
-                  <Grid size={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <Button
                       variant="outlined"
                       onClick={handleSavePreset}
@@ -895,7 +890,7 @@ const CippGraphExplorerFilter = ({
                     </Button>
                   </Grid>
 
-                  <Grid size={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <Button
                       startIcon={<Delete />}
                       variant="outlined"
@@ -907,7 +902,7 @@ const CippGraphExplorerFilter = ({
                     </Button>
                   </Grid>
 
-                  <Grid size={6}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
                     <Button
                       onClick={handleImport}
                       variant="outlined"
@@ -918,7 +913,7 @@ const CippGraphExplorerFilter = ({
                       Import/Export
                     </Button>
                   </Grid>
-                  <Grid size={6} sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <Grid size={{ xs: 12, sm: 6 }} sx={{ display: 'flex', justifyContent: 'center' }}>
                     <CippFormComponent
                       name="IsShared"
                       type="switch"

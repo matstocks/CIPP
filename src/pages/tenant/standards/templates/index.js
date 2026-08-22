@@ -3,7 +3,7 @@ import { CippTablePage } from '../../../../components/CippComponents/CippTablePa
 import { Layout as DashboardLayout } from '../../../../layouts/index.js' // had to add an extra path here because I added an extra folder structure. We should switch to absolute pathing so we dont have to deal with relative.
 import { TabbedLayout } from '../../../../layouts/TabbedLayout'
 import Link from 'next/link'
-import { CopyAll, Delete, PlayArrow, AddBox, Edit, GitHub, ContentCopy } from '@mui/icons-material'
+import { CopyAll, Delete, PlayArrow, AddBox, Edit, GitHub, ContentCopy, Schedule } from '@mui/icons-material'
 import { ApiGetCall, ApiPostCall } from '../../../../api/ApiCall'
 import { Grid } from '@mui/system'
 import { CippApiResults } from '../../../../components/CippComponents/CippApiResults'
@@ -84,6 +84,34 @@ const Page = () => {
       multiPost: false,
     },
     {
+      label: 'Set Schedule',
+      title: 'Set Schedule',
+      type: 'POST',
+      url: '/api/ExecStandardTemplateSchedule',
+      icon: <Schedule />,
+      data: {
+        TemplateId: 'GUID',
+      },
+      fields: [
+        {
+          label: 'Schedule',
+          name: 'runManually',
+          type: 'select',
+          multiple: false,
+          creatable: false,
+          options: [
+            { label: 'Disable schedule (run manually only)', value: 'true' },
+            { label: 'Enable schedule', value: 'false' },
+          ],
+          required: true,
+          validators: { required: { value: true, message: 'This field is required' } },
+        },
+      ],
+      confirmText: 'Set the schedule for [templateName]?',
+      condition: (row) => row.type !== 'drift',
+      multiPost: false,
+    },
+    {
       label: 'Save to GitHub',
       type: 'POST',
       url: '/api/ExecCommunityRepo',
@@ -161,14 +189,14 @@ const Page = () => {
                 disable the schedule. After conversion, please check the new templates to ensure
                 they are correct and re-enable the schedule.
               </Grid>
-              <Grid size={2}>
+              <Grid size={{ xs: 12, md: 2 }}>
                 <Button onClick={() => handleConversion()} variant={'contained'}>
                   Convert Legacy Standards
                 </Button>
               </Grid>
             </Alert>
           </Grid>
-          <Grid size={8}>
+          <Grid size={{ xs: 12, md: 8 }}>
             <CippApiResults apiObject={conversionApi} />
           </Grid>
         </Grid>

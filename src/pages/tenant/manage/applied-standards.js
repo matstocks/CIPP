@@ -37,6 +37,7 @@ import {
   Schedule,
   Check,
   Warning,
+  CompareArrows,
 } from '@mui/icons-material'
 import { getStandards } from '../../../utils/standards-data'
 import { CippApiDialog } from '../../../components/CippComponents/CippApiDialog'
@@ -54,6 +55,14 @@ import tabOptions from './tabOptions.json'
 import { createDriftManagementActions } from './driftManagementActions'
 import { CippApiLogsDrawer } from '../../../components/CippComponents/CippApiLogsDrawer'
 import { CippHead } from '../../../components/CippComponents/CippHead'
+import { CippPolicyCompareDialog } from '../../../components/CippComponents/CippPolicyCompareDialog'
+
+// Only Intune template standards can be compared live against their baseline. The standard records
+// compliance as a boolean and discards the diff, so it has to be recomputed on demand.
+const getCompareTemplateGuid = (standardId) =>
+  standardId?.startsWith('standards.IntuneTemplate.')
+    ? standardId.substring('standards.IntuneTemplate.'.length)
+    : null
 
 const Page = () => {
   const router = useRouter()
@@ -72,6 +81,7 @@ const Page = () => {
   const [filter, setFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [filterMenuAnchor, setFilterMenuAnchor] = useState(null)
+  const [compareTarget, setCompareTarget] = useState(null)
 
   const templateDetails = ApiGetCall({
     url: `/api/listStandardTemplates`,
@@ -764,6 +774,120 @@ const Page = () => {
                   isOverridden,
                   overridingTemplateId: isOverridden ? tenantTemplateId : null,
                   overridingTemplateName,
+                })
+              })
+            } else if (standardKey === 'ReusableSettingsTemplate' && Array.isArray(standardConfig)) {
+              standardConfig.forEach((templateItem) => {
+                if (!templateItem) return
+
+                // TemplateList is multi-select for this standard, so each entry holds an array
+                const templateList = Array.isArray(templateItem.TemplateList)
+                  ? templateItem.TemplateList
+                  : [templateItem.TemplateList].filter(Boolean)
+
+                templateList.forEach((templateEntry) => {
+                  const itemTemplateId = templateEntry?.value
+                  if (!itemTemplateId) return
+
+                  const standardId = `standards.ReusableSettingsTemplate.${itemTemplateId}`
+                  const standardInfo = getStandards().find(
+                    (s) => s.name === 'standards.ReusableSettingsTemplate'
+                  )
+
+                  const currentTenantStandard = currentTenantData.find(
+                    (s) => s.standardId === standardId
+                  )
+                  const standardObject = currentTenantObj?.[standardId]
+                  const directStandardValue = standardObject?.Value
+                  const tenantTemplateId = standardObject?.TemplateId
+                  const isOverridden =
+                    tenantTemplateId &&
+                    tenantTemplateId !== templateId &&
+                    templateExists(tenantTemplateId)
+                  const overridingTemplateName = isOverridden
+                    ? getTemplateDisplayName(tenantTemplateId)
+                    : null
+
+                  let isCompliant = false
+                  // Empty-string Current/Expected means the standard only wrote a FieldValue
+                  // (legacy row shape) — comparing them would always match, so fall through.
+                  if (
+                    standardObject?.CurrentValue !== undefined &&
+                    standardObject?.ExpectedValue !== undefined &&
+                    standardObject?.CurrentValue !== '' &&
+                    standardObject?.ExpectedValue !== ''
+                  ) {
+                    const sortedCurrent =
+                      typeof standardObject.CurrentValue === 'object' &&
+                      standardObject.CurrentValue !== null
+                        ? Object.keys(standardObject.CurrentValue)
+                            .sort()
+                            .reduce((obj, key) => {
+                              obj[key] = standardObject.CurrentValue[key]
+                              return obj
+                            }, {})
+                        : standardObject.CurrentValue
+                    const sortedExpected =
+                      typeof standardObject.ExpectedValue === 'object' &&
+                      standardObject.ExpectedValue !== null
+                        ? Object.keys(standardObject.ExpectedValue)
+                            .sort()
+                            .reduce((obj, key) => {
+                              obj[key] = standardObject.ExpectedValue[key]
+                              return obj
+                            }, {})
+                        : standardObject.ExpectedValue
+                    isCompliant = JSON.stringify(sortedCurrent) === JSON.stringify(sortedExpected)
+                  } else if (directStandardValue === true) {
+                    isCompliant = true
+                  } else if (currentTenantStandard) {
+                    isCompliant = currentTenantStandard.value === true
+                  }
+
+                  allStandards.push({
+                    standardId,
+                    standardName: `Reusable Setting: ${templateEntry?.label || itemTemplateId}`,
+                    currentTenantValue:
+                      standardObject !== undefined
+                        ? {
+                            Value: directStandardValue,
+                            LastRefresh: standardObject?.LastRefresh,
+                            TemplateId: tenantTemplateId,
+                            CurrentValue: standardObject?.CurrentValue,
+                            ExpectedValue: standardObject?.ExpectedValue,
+                            LicenseAvailable: standardObject?.LicenseAvailable,
+                          }
+                        : currentTenantStandard?.value,
+                    standardValue: { displayName: templateEntry?.label || itemTemplateId },
+                    complianceStatus: isOverridden
+                      ? 'Overridden'
+                      : isCompliant
+                        ? 'Compliant'
+                        : 'Non-Compliant',
+                    complianceDetails:
+                      standardInfo?.docsDescription || standardInfo?.helpText || '',
+                    standardDescription: standardInfo?.helpText || '',
+                    standardImpact: standardInfo?.impact || 'Low Impact',
+                    standardImpactColour: standardInfo?.impactColour || 'info',
+                    templateName: selectedTemplate?.templateName || 'Standard Template',
+                    templateActions: (() => {
+                      const actions = templateItem.action || []
+                      const hasRemediate = actions.some((a) => {
+                        const label = typeof a === 'object' ? a?.label || a?.value : a
+                        return label === 'Remediate' || label === 'remediate'
+                      })
+                      const hasReport = actions.some((a) => {
+                        const label = typeof a === 'object' ? a?.label || a?.value : a
+                        return label === 'Report' || label === 'report'
+                      })
+                      if (hasRemediate && !hasReport) return [...actions, 'Report']
+                      return actions
+                    })(),
+                    autoRemediate: templateItem.autoRemediate || false,
+                    isOverridden,
+                    overridingTemplateId: isOverridden ? tenantTemplateId : null,
+                    overridingTemplateName,
+                  })
                 })
               })
             } else if (standardKey === 'GroupTemplate') {
@@ -1566,7 +1690,7 @@ const Page = () => {
                 mt: 2,
               }}
             >
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap' }}>
+              <Stack useFlexGap direction="row" alignItems="center" spacing={1} sx={{ flexWrap: 'wrap' }}>
                 <CippAutoComplete
                   options={templateOptions}
                   label="Template"
@@ -1999,6 +2123,22 @@ const Page = () => {
                                   </Box>
                                 </Stack>
                               </Stack>
+                              {getCompareTemplateGuid(standard.standardId) && (
+                                <Button
+                                  variant="outlined"
+                                  size="small"
+                                  startIcon={<CompareArrows />}
+                                  sx={{ flexShrink: 0, ml: 2 }}
+                                  onClick={() =>
+                                    setCompareTarget({
+                                      templateGuid: getCompareTemplateGuid(standard.standardId),
+                                      templateName: standard.standardName,
+                                    })
+                                  }
+                                >
+                                  Compare
+                                </Button>
+                              )}
                             </Stack>
                           </Stack>
                           <Divider />
@@ -3108,6 +3248,15 @@ const Page = () => {
             },
           }}
           relatedQueryKeys={['ListStandardsCompare']}
+        />
+
+        <CippPolicyCompareDialog
+          open={Boolean(compareTarget)}
+          onClose={() => setCompareTarget(null)}
+          tenantFilter={currentTenant}
+          templateGuid={compareTarget?.templateGuid}
+          templateName={compareTarget?.templateName}
+          standardsTemplateId={templateId}
         />
       </Box>
     </HeaderedTabbedLayout>

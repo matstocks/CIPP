@@ -34,6 +34,7 @@ const Page = () => {
     extendedInfoFields: [
       'createdDateTime',
       'displayName',
+      'description',
       'lastModifiedDateTime',
       'PolicyTypeName',
       'PolicySource',
@@ -66,9 +67,9 @@ const Page = () => {
               requiredPermissions={cardButtonPermissions}
               PermissionButton={PermissionButton}
             />
-            {reportDB.controls}
           </Stack>
         }
+        dataSourceControls={reportDB.controls}
       />
       {reportDB.syncDialog}
     </>
