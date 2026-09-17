@@ -250,7 +250,10 @@ function Invoke-ExecApiClient {
                     # Copilot Studio uses Manual OAuth with a maker-typed scope; its refresh token
                     # depends on offline_access being consented on the MCP client app registration
                     # (Set-CIPPMCPClientApp / Grant-CippAppGraphConsent), not on these documents.
-                    $McpAppSettings = Get-CippMcpScopeAppSettings -Hostname $env:WEBSITE_HOSTNAME -TenantId $env:TenantID -IsCippNg:([bool]$env:CIPPNG)
+                    # The advertised resource/scope is built from the MCP resource app's own appId
+                    # (api://<appId>) so the refresh grant names the resource by GUID — see
+                    # Get-CippMcpScopeAppSettings for why the https:// form triggers AADSTS90009.
+                    $McpAppSettings = Get-CippMcpScopeAppSettings -AppId (@($McpClientIds)[0]) -TenantId $env:TenantID -IsCippNg:([bool]$env:CIPPNG)
                     $null = Update-CIPPAzFunctionAppSetting -Name $FunctionAppName -ResourceGroupName $RGName -AppSetting $McpAppSettings
                 } else {
                     $null = Update-CIPPAzFunctionAppSetting -Name $FunctionAppName -ResourceGroupName $RGName -AppSetting @{} -RemoveKeys @('WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES', 'CRAFT_PRM', 'CRAFT_PRM_AS')
