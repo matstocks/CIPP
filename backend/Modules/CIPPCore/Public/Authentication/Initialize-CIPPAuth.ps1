@@ -273,12 +273,13 @@ function Initialize-CIPPAuth {
                     # uses, so a write here is byte-identical and self-terminating.
                     if ($McpClientIds.Count -gt 0 -and $env:WEBSITE_HOSTNAME) {
                         try {
-                            # Resource/scope are advertised by the MCP resource app's GUID identifier
-                            # (api://<appId>) so the refresh grant avoids AADSTS90009 — see
-                            # Get-CippMcpScopeAppSettings. This drift check must expect the same form,
-                            # or it would rewrite + restart on every warmup.
+                            # The advertised authorize-time scope stays host-based; only the
+                            # refresh-time resource (CRAFT_PRM.resource) is api://<appId> to avoid
+                            # AADSTS90009 — see Get-CippMcpScopeAppSettings. This drift check only
+                            # looks at the scope set, so it expects the host-based scope form or it
+                            # would rewrite + restart on every warmup.
                             $McpAppId = @($McpClientIds)[0]
-                            $McpScope = "api://$McpAppId/user_impersonation"
+                            $McpScope = "https://$($env:WEBSITE_HOSTNAME)/user_impersonation"
                             $HeaderTokens = @("$($env:WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES)" -split ' ' | Where-Object { $_ })
                             $ScopeDrift = ('offline_access' -notin $HeaderTokens) -or ($McpScope -notin $HeaderTokens)
                             if (-not $ScopeDrift -and $env:CIPPNG) {
@@ -290,7 +291,7 @@ function Initialize-CIPPAuth {
                             }
                             if ($ScopeDrift) {
                                 $McpRg = Get-CIPPFunctionAppResourceGroup -SiteName $env:WEBSITE_SITE_NAME
-                                $McpAppSettings = Get-CippMcpScopeAppSettings -AppId $McpAppId -TenantId $env:TenantID -IsCippNg:([bool]$env:CIPPNG)
+                                $McpAppSettings = Get-CippMcpScopeAppSettings -Hostname $env:WEBSITE_HOSTNAME -AppId $McpAppId -TenantId $env:TenantID -IsCippNg:([bool]$env:CIPPNG)
                                 $null = Update-CIPPAzFunctionAppSetting -Name $env:WEBSITE_SITE_NAME -ResourceGroupName $McpRg -AppSetting $McpAppSettings
                                 Write-Information '[Auth-Init] MCP OAuth scope advertisement was missing offline_access — reconciled app settings and requesting restart'
                                 Request-CIPPRestart -Reason 'MCP OAuth scope settings reconciled (offline_access) during warmup'

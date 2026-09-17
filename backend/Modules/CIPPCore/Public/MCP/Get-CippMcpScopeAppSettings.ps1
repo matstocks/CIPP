@@ -16,25 +16,35 @@ function Get-CippMcpScopeAppSettings {
         a refresh token and the client re-authenticates roughly every hour. (Copilot Studio uses
         Manual OAuth and ignores all of this; its refresh depends on app-registration consent.)
 
-        The resource is advertised by its GUID-based app identifier (api://<appId>), NOT the
-        host-based https:// URL, and this is deliberate. CIPP configures ONE API-client app as both
-        the OAuth public client (Claude/ChatGPT connect with its own client_id) AND the protected
-        resource (its identifier URIs). When a client refreshes, it echoes the RFC 8707 resource
-        indicator - the value advertised here as CRAFT_PRM.resource - back to Entra. If that value
-        is an https:// identifier URI, Entra resolves it to the very app making the request and
-        rejects the refresh with AADSTS90009 ("Application is requesting a token for itself. This
-        scenario is supported only if resource is specified using the GUID based App Identifier").
-        Advertising api://<appId> instead names the resource by its GUID, which is exactly the form
-        Entra permits for the client==resource case, so the non-interactive refresh_token grant
-        succeeds and the connection stops silently dropping at the access-token lifetime. The v2
-        access token's audience is the resource app's appId GUID either way, so EasyAuth validation
-        (Set-CippApiAuth already allows api://<appId>, the bare appId, and the https:// URIs) is
-        unaffected by the switch.
+        Scope vs resource are two different levers and only the resource must change to fix the
+        silent-refresh failure:
+
+        - The advertised SCOPE (challenge header + scopes_supported) is what a client requests at
+          AUTHORIZE / consent time. It stays the host-based https://<host>/user_impersonation form,
+          which Entra has consented cleanly for every MCP client. Requesting the api://<appId> form
+          of the scope at authorize is rejected with AADSTS28003 for this app because CIPP uses ONE
+          API-client app as both the OAuth public client and the protected resource.
+
+        - The protected-resource identifier (CRAFT_PRM.resource) is the value a client echoes back
+          as the RFC 8707 resource indicator on the non-interactive refresh_token grant. When that
+          was the https:// identifier URI, Entra resolved it to the very app making the request and
+          rejected the refresh with AADSTS90009 ("Application is requesting a token for itself. This
+          scenario is supported only if resource is specified using the GUID based App Identifier"),
+          so the connection silently dropped at the access-token lifetime (~60-90 min). Advertising
+          api://<appId> names the resource by its GUID, which is exactly the form Entra permits for
+          the client==resource case, so the refresh succeeds.
+
+        The v2 access token's audience is the resource app's appId GUID regardless of which form was
+        requested, and Set-CippApiAuth already allows api://<appId>, the bare appId and the https://
+        URIs as audiences, so EasyAuth validation is unaffected either way.
+    .PARAMETER Hostname
+        The App Service hostname (WEBSITE_HOSTNAME) - the *.azurewebsites.net host that matches the
+        MCP client app registration's identifier URIs, not the vanity domain. Used to build the
+        host-based authorize-time scope.
     .PARAMETER AppId
         Application (client) ID of the MCP resource app registration - the single API client with
-        MCP access enabled. The advertised scope (api://<appId>/user_impersonation) and the
-        protected-resource identifier (api://<appId>) are built from it so the refresh grant names
-        the resource by GUID and Entra accepts the self-token case (see .DESCRIPTION).
+        MCP access enabled. The protected-resource identifier (api://<appId>) is built from it so
+        the refresh grant names the resource by GUID and Entra accepts the self-token case.
     .PARAMETER TenantId
         Partner tenant ID, used to build the tenanted authorization-server endpoints.
     .PARAMETER IsCippNg
@@ -45,6 +55,9 @@ function Get-CippMcpScopeAppSettings {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [string]$Hostname,
+
+        [Parameter(Mandatory)]
         [string]$AppId,
 
         [Parameter()]
@@ -54,9 +67,11 @@ function Get-CippMcpScopeAppSettings {
         [switch]$IsCippNg
     )
 
-    $ResourceUri = "api://$AppId"
-    $McpScope = "$ResourceUri/user_impersonation"
+    # Authorize-time scope stays host-based (consented cleanly; the api:// form 28003s at authorize).
+    $McpScope = "https://$Hostname/user_impersonation"
     $McpScopesSupported = @('openid', 'profile', 'offline_access', $McpScope)
+    # Refresh-time resource indicator must be the GUID app identifier to avoid AADSTS90009.
+    $ResourceUri = "api://$AppId"
 
     $Settings = @{
         'WEBSITE_AUTH_PRM_DEFAULT_WITH_SCOPES' = 'openid profile offline_access {0}' -f $McpScope
